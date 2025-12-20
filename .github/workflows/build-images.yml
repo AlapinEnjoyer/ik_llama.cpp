@@ -16,8 +16,10 @@ jobs:
         include:
           - arch: "avx2"
             flags: "-DGGML_AVX2=ON -DGGML_AVX512=OFF"
+            extra_cflags: ""
           - arch: "avx512"
-            flags: "-DGGML_AVX2=ON -DGGML_AVX512=ON -DCMAKE_CXX_FLAGS='-mavx512f -mavx512vnni -mavx512vl -mavx512bw -mavx512dq' -DCMAKE_C_FLAGS='-mavx512f -mavx512vnni -mavx512vl -mavx512bw -mavx512dq'"
+            flags: "-DGGML_AVX2=ON -DGGML_AVX512=ON"
+            extra_cflags: "-mavx512f -mavx512vnni -mavx512vl -mavx512bw -mavx512dq"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,4 +46,6 @@ jobs:
           tags: |
             ghcr.io/${{ env.repo_lc }}/ik-llama-server:${{ matrix.arch }}-${{ steps.prep.outputs.sha }}
             ghcr.io/${{ env.repo_lc }}/ik-llama-server:${{ matrix.arch }}-latest
-          build-args: CMAKE_ARGS=${{ matrix.flags }}
+          build-args: |
+            CMAKE_ARGS=${{ matrix.flags }}
+            EXTRA_CFLAGS=${{ matrix.extra_cflags }}
