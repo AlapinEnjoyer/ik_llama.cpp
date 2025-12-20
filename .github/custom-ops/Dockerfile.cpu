@@ -1,0 +1,29 @@
+FROM ubuntu:22.04 AS builder
+
+RUN apt-get update && apt-get install -y \
+    cmake \
+    build-essential \
+    git \
+    libcurl4-openssl-dev
+
+WORKDIR /app
+
+COPY . .
+
+ARG CMAKE_ARGS=""
+
+RUN cmake -B build \
+    ${CMAKE_ARGS} \
+    -DGGML_NATIVE=OFF \
+    -DGGML_CUDA=OFF \
+    -DLLAMA_CURL=ON \
+    -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build --config Release -j$(nproc)
+
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y libcurl4 libgomp1 && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/build/bin/llama-server /usr/local/bin/llama-server
+
+ENTRYPOINT ["/usr/local/bin/llama-server"]

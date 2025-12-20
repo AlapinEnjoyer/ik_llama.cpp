@@ -1,0 +1,49 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 0 1,15 * *'
+  workflow_dispatch:
+
+jobs:
+  sync-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.SYNC_PAT }}
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Sync with Upstream
+        id: sync
+        run: |
+          git remote add upstream https://github.com/ikawrakow/ik_llama.cpp.git
+          git fetch upstream
+          
+          # Check if we are behind upstream
+          BEHIND_COUNT=$(git rev-list --count HEAD..upstream/main)
+          echo "Commits behind: $BEHIND_COUNT"
+          
+          if [ "$BEHIND_COUNT" -gt "0" ]; then
+            git merge upstream/main
+            git push
+            echo "updated=true" >> $GITHUB_OUTPUT
+            echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          else
+            echo "updated=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        if: steps.sync.outputs.updated == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: release-${{ steps.sync.outputs.short_sha }}
+          name: Update ${{ steps.sync.outputs.short_sha }}
+          body: "Automated sync from upstream repository."
+          make_latest: true
