@@ -25,5 +25,6 @@ FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y libcurl4 libgomp1 && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/build/bin/llama-server /usr/local/bin/llama-server
+COPY --from=builder /app/build/bin/llama-bench /usr/local/bin/llama-bench
 
-ENTRYPOINT ["/usr/local/bin/llama-server"]
+ENTRYPOINT ["llama-server"]
