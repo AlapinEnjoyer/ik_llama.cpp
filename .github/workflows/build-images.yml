@@ -17,7 +17,7 @@ jobs:
           - arch: "avx2"
             flags: "-DGGML_AVX2=ON -DGGML_AVX512=OFF"
           - arch: "avx512"
-            flags: "-DGGML_AVX2=ON -DGGML_AVX512=ON -DCMAKE_CXX_FLAGS=-mavx512dq -DCMAKE_C_FLAGS=-mavx512dq"
+            flags: "-DGGML_AVX2=ON -DGGML_AVX512=ON -DCMAKE_CXX_FLAGS='-mavx512f -mavx512vnni -mavx512vl -mavx512bw -mavx512dq' -DCMAKE_C_FLAGS='-mavx512f -mavx512vnni -mavx512vl -mavx512bw -mavx512dq'"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
