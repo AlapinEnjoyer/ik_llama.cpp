@@ -17,6 +17,7 @@ RUN cmake -B build \
     -DGGML_NATIVE=OFF \
     -DGGML_CUDA=OFF \
     -DLLAMA_CURL=ON \
+    -DBUILD_SHARED_LIBS=OFF \
     -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build --config Release -j$(nproc)
 
