@@ -253,6 +253,30 @@ common_webui common_webui_from_name(const std::string& format) {
     }
 }
 
+thinking_tokens thinking_tokens_from_string(const std::string& format) {
+    thinking_tokens think_token;
+    std::string token_string = string_strip(format);
+    if (token_string == "none" || token_string == "None") {
+        think_token.exclude = false;
+        return think_token;
+    }
+    else if (token_string == "auto" || token_string == "Auto") {
+        think_token.exclude = true;
+        think_token.begin = "<think>";
+        think_token.end = "</think>";
+        return think_token;
+    }
+    // Use user provided think tokens
+    auto start_end = string_split(format, ",");
+    if (start_end.size() == 2) {
+        think_token.exclude = true;
+        think_token.begin = start_end[0];
+        think_token.end = start_end[1];
+    }
+    return think_token;
+}
+
+
 static std::string read_file(const std::string& fname) {
     std::ifstream file(fname);
     if (!file) {
@@ -1227,6 +1251,10 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         params.graph_reuse = true;
         return true;
     }
+    if (arg == "-no-gr" || arg == "--no-graph-reuse") {
+        params.graph_reuse = false;
+        return true;
+    }
     if (arg == "-ser" || arg == "--smart-expert-reduction") {
         CHECK_ARG
         auto values = string_split_pairs<int,float>(argv[i], ',');
@@ -1410,6 +1438,18 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
     }
     if (arg == "-smgs" || arg == "--split-mode-graph-scheduling") {
         params.split_mode_graph_scheduling = true;
+        return true;
+    }
+    if (arg == "-sas" || arg == "--scheduler-async") {
+        params.scheduler_async = true;
+        return true;
+    }
+    if (arg == "-smf16" || arg == "--split-mode-f16") {
+        params.split_mode_f16 = true;
+        return true;
+    }
+    if (arg == "-smf32" || arg == "--split-mode-f32") {
+        params.split_mode_f16 = false;
         return true;
     }
     if (arg == "--numa") {
@@ -1743,6 +1783,11 @@ bool gpt_params_find_arg(int argc, char ** argv, const std::string & arg, gpt_pa
         if (!params.slot_save_path.empty() && params.slot_save_path[params.slot_save_path.size() - 1] != DIRECTORY_SEPARATOR) {
             params.slot_save_path += DIRECTORY_SEPARATOR;
         }
+        return true;
+    }
+    if (arg == "--reasoning-tokens") {
+        CHECK_ARG
+        params.think_tokens = thinking_tokens_from_string(std::string(argv[i]));
         return true;
     }
     if (arg == "--reasoning-budget") {
@@ -2090,10 +2135,14 @@ void gpt_params_print_usage(int /*argc*/, char ** argv, const gpt_params & param
     options.push_back({ "*",           "-no-mmad, --no-fused-mul-multiadd", "disable fused mul-multi_add (default: %s)", params.fused_mmad? "enabled" : "disabled" });
     //options.push_back({ "*",           "-rcache, --rope-cache",         "enable RoPE cache (default: %s)", params.rope_cache ? "enabled" : "disabled" });
     options.push_back({ "*",           "-gr, --graph-reuse",            "enable graph reuse (default: %s)", params.graph_reuse ? "enabled" : "disabled" });
+    options.push_back({ "*",           "-no-gr, --no-graph-reuse",      "disable graph reuse (default: %s)", !params.graph_reuse ? "enabled" : "disabled" });
     options.push_back({ "*",         "-ser,  --smart-expert-reduction", "experts reduction (default: %d,%g)", params.min_experts, params.thresh_experts});
     options.push_back({ "*",         "-mqkv,  --merge-qkv,",            "merge Q,K,V (default: %d)", params.merge_qkv});
     options.push_back({ "*",         "-khad,  --k-cache-hadamard,",     "Use Hadamard transform for K-cache (default: %d)", params.k_cache_hadamard});
+    options.push_back({ "*",         "-smf16, --split-mode-f16,",       "Use f16 for data exchange between GPUs (default: %d)", params.split_mode_f16});
+    options.push_back({ "*",         "-smf32, --split-mode-f32,",       "Use f32 for data exchange between GPUs (default: %d)", !params.split_mode_f16});
     options.push_back({ "*",         "-smgs, --split-mode-graph-scheduling,", "Force Split Mode Graph Scheduling (default: %d)", params.split_mode_graph_scheduling});
+    options.push_back({ "*",         "-sas,  ==scheduler_async,",       "Async evaluation of compute graphs: %d)", params.scheduler_async});
     options.push_back({ "*",         "-vq, --validate-quants",          "validate quantized data while loading the model (default: %d)", params.validate_quants});
     options.push_back({ "*",           "-p,    --prompt PROMPT",        "prompt to start generation with\n"
                                                                         "in conversation mode, this will be used as system prompt\n"
@@ -2160,6 +2209,7 @@ void gpt_params_print_usage(int /*argc*/, char ** argv, const gpt_params & param
     options.push_back({ "main",        "       --cfg-negative-prompt-file FNAME",
                                                                         "negative prompt file to use for guidance" });
     options.push_back({ "main",        "       --cfg-scale N",          "strength of guidance (default: %.1f, 1.0 = disable)", (double)sparams.cfg_scale });
+    options.push_back({ "template" });
     options.push_back({ "main",        "       --jinja",
                                                                         "set custom jinja chat template (default: template taken from model's metadata)\n"
                                                                         "if suffix/prefix are specified, template will be disabled\n"
@@ -2176,7 +2226,15 @@ void gpt_params_print_usage(int /*argc*/, char ** argv, const gpt_params & param
                         "- deepseek-legacy: keeps `<think>` tags in `message.content` while also populating `message.reasoning_content`\n"
                         "(default: none)", });
     options.push_back({ "main",      "       --chat-template-kwargs JSON",  "sets additional params for the json template parser"});
-    options.push_back({ "main",      "       --reasoning-budget N",  "controls the amount of thinking allowed; currently only one of: -1 for unrestricted thinking budget, or 0 to disable thinking (default: -1)" });
+    options.push_back({ "main",      "       --reasoning-budget N",  "controls the amount of thinking allowed.\n"
+                                                                                                     "currently only one of: -1 for unrestricted thinking budget, or 0 to disable thinking"
+                                                                                                      "(default: -1)" });
+    options.push_back({ "main",      "       --reasoning-tokens FORMAT",     "exclude reasoning tokens to select the slot more accurately.\n"
+						                                                                                            "none: include all tokens\n"
+                                                                                                                    "auto: exclude all tokens between <think> and </think>\n"
+						                                                                                            "Or comma separated start and end tokens such as [THINK],[/THINK]\n"
+						                                                                                            "(default: auto)" });
+
     options.push_back({ "main",      "       --no-prefill-assistant",  "whether to prefill the assistant's response if the last message is an assistant message (default: prefill enabled)\n"
             "when this flag is set, if the last message is an assistant message then it will be treated as a full message and not prefilled\n" });
     options.push_back({ "grammar" });
@@ -3118,6 +3176,8 @@ struct llama_context_params llama_context_params_from_gpt_params(const gpt_param
     cparams.graph_reuse       = params.graph_reuse;
     cparams.k_cache_hadamard  = params.k_cache_hadamard;
     cparams.split_mode_graph_scheduling = params.split_mode_graph_scheduling;
+    cparams.split_mode_f16    = params.split_mode_f16;
+    cparams.scheduler_async   = params.scheduler_async;
     cparams.min_experts       = params.min_experts;
     cparams.thresh_experts    = params.thresh_experts;
     cparams.only_active_experts = params.only_active_exps;
@@ -4100,6 +4160,8 @@ void yaml_dump_non_result_info(FILE * stream, const gpt_params & params, const l
     fprintf(stream, "graph_reuse: %s # default: false\n", params.graph_reuse ? "true" : "false");
     fprintf(stream, "k_cache_hadamard: %s # default: false\n", params.k_cache_hadamard ? "true" : "false");
     fprintf(stream, "split_mode_graph_scheduling: %s # default: false\n", params.split_mode_graph_scheduling ? "true" : "false");
+    fprintf(stream, "split_mode_f16: %s # default: true\n", params.split_mode_f16 ? "true" : "false");
+    fprintf(stream, "scheduler_async: %s # default: false\n", params.scheduler_async ? "true" : "false");
     fprintf(stream, "ser: %d,%g # defaulr: -1,0\n", params.min_experts, params.thresh_experts);
     fprintf(stream, "temp: %f # default: 0.8\n", sparams.temp);
 

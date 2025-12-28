@@ -689,6 +689,10 @@ extern "C" {
 
         GGML_OP_GLU,
 
+        GGML_OP_REDUCE,
+        GGML_OP_FAKE_CPY,
+        GGML_OP_FUSED_NORM,
+
         GGML_OP_COUNT,
     };
 
@@ -1479,6 +1483,18 @@ extern "C" {
             float                 eps);
 
     GGML_API struct ggml_tensor * ggml_fused_rms_norm_inplace(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * a,
+            struct ggml_tensor  * b,
+            float                 eps);
+
+    GGML_API struct ggml_tensor * ggml_fused_norm(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * a,
+            struct ggml_tensor  * b,
+            float                 eps);
+
+    GGML_API struct ggml_tensor * ggml_fused_norm_inplace(
             struct ggml_context * ctx,
             struct ggml_tensor  * a,
             struct ggml_tensor  * b,
@@ -3033,6 +3049,17 @@ extern "C" {
         struct ggml_tensor *  tensor;
         struct ggml_tensor ** splits;
     } ggml_split_tensor_t;
+
+    GGML_API struct ggml_tensor * ggml_reduce(
+            struct ggml_context         * ctx,
+            struct ggml_tensor         ** a,
+            int                           n,
+            enum ggml_op                  op);
+
+    GGML_API struct ggml_tensor * ggml_fake_cpy(
+            struct ggml_context         * ctx,
+            struct ggml_tensor          * dst,
+            struct ggml_tensor          * src);
 
 #ifdef  __cplusplus
 }
