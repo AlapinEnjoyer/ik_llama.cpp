@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      upstream_sha:
+        description: 'Upstream commit SHA for tagging'
+        required: false
+        type: string
 
 jobs:
   build:
@@ -28,7 +33,12 @@ jobs:
         id: prep
         run: |
           echo "repo_lc=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
-          echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          # Use upstream SHA if provided, otherwise use local HEAD
+          if [ -n "${{ github.event.inputs.upstream_sha }}" ]; then
+            echo "sha=${{ github.event.inputs.upstream_sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          fi
 
       - name: Login to GHCR
         uses: docker/login-action@v3
